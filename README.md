@@ -66,4 +66,10 @@ Weather is fetched from wttr.in in the background and cached for 30 minutes to a
 ./uninstall.sh
 ```
 
-This removes the script from your shell config but keeps the script files in place
+This removes the script from your shell config but keeps the script files in place.
+
+## Credits
+
+- Pokemon sprites provided by [PokemonDB](https://pokemondb.net/)
+- Weather data provided by [wttr.in](https://wttr.in/)
+- Pokemon is a trademark of Nintendo/Game Freak/The Pokemon Company
