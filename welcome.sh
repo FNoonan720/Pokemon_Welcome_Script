@@ -266,7 +266,7 @@ get_temp_color() {
 # Example: export WELCOME_LOCATION="New York,NY"
 WEATHER_LOCATION="${WELCOME_LOCATION:-}"
 
-# Weather cache settings
+# Weather cache settings (line 1: location, line 2: weather data)
 WEATHER_CACHE="$SCRIPT_DIR/.weather_cache"
 WEATHER_CACHE_MAX_AGE=1800  # 30 minutes in seconds
 
@@ -274,7 +274,7 @@ WEATHER_CACHE_MAX_AGE=1800  # 30 minutes in seconds
 update_weather_cache() {
     [ -z "$WEATHER_LOCATION" ] && return
     local encoded_location="${WEATHER_LOCATION// /+}"
-    (curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" > "$WEATHER_CACHE.tmp" 2>/dev/null && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE") &
+    (weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null) && printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE") &
     disown
 }
 
@@ -282,15 +282,22 @@ update_weather_cache() {
 fetch_weather_sync() {
     [ -z "$WEATHER_LOCATION" ] && return
     local encoded_location="${WEATHER_LOCATION// /+}"
-    curl -s --max-time 3 "wttr.in/${encoded_location}?format=%c+%t" > "$WEATHER_CACHE" 2>/dev/null
+    local weather
+    weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null) && printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
 }
 
 # Main display
 main() {
     # Check if weather cache needs updating
     if [ -n "$WEATHER_LOCATION" ]; then
+        local cached_location=""
+        [ -f "$WEATHER_CACHE" ] && cached_location=$(head -1 "$WEATHER_CACHE")
+
         if [ ! -f "$WEATHER_CACHE" ]; then
             # First run: fetch synchronously so weather displays immediately
+            fetch_weather_sync
+        elif [ "$cached_location" != "$WEATHER_LOCATION" ]; then
+            # Location changed: fetch fresh weather for new location
             fetch_weather_sync
         elif [ $(($(date +%s) - $(stat -c %Y "$WEATHER_CACHE" 2>/dev/null || echo 0))) -gt $WEATHER_CACHE_MAX_AGE ]; then
             # Cache expired: fetch synchronously so first login shows fresh weather
@@ -359,22 +366,25 @@ main() {
     printf "${WHITE}%-22s${RESET} ${C_BLUE}Used %s MB of %s MB (%s%%)${RESET}\n" "Memory Usage:" "$used" "$total" "$percent"
     printf "${WHITE}%-22s${RESET} ${C_BLUE}%s MB available${RESET}\n" "" "$available"
 
-    # Display weather
-    if [ -n "$WEATHER_LOCATION" ] && [ -f "$WEATHER_CACHE" ]; then
-        local weather_data=$(<"$WEATHER_CACHE")
+    # Display weather (only if cache matches current location)
+    local display_cached_location=""
+    [ -f "$WEATHER_CACHE" ] && display_cached_location=$(head -1 "$WEATHER_CACHE")
+    if [ -n "$WEATHER_LOCATION" ] && [ -f "$WEATHER_CACHE" ] && [ "$display_cached_location" = "$WEATHER_LOCATION" ]; then
+        local weather_data
+        weather_data=$(sed -n '2p' "$WEATHER_CACHE")
         weather_data="${weather_data//+/}"  # Remove plus signs
 
         if [ -n "$weather_data" ] && [ "$weather_data" != "N/A" ]; then
             local temp_num=$(echo "$weather_data" | grep -oE '[-]?[0-9]+' | head -1)
             if [ -n "$temp_num" ]; then
                 local temp_color=$(get_temp_color "$temp_num")
-                local icon="${weather_data%%[0-9-]*}"
-                icon="${icon%% }"  # Trim trailing space
+                local icon
+                icon=$(echo "$weather_data" | sed 's/[0-9-].*//' | sed 's/ *$//')
                 local temp_with_unit=$(echo "$weather_data" | grep -oE '[-]?[0-9]+°[CF]')
-                printf "${WHITE}%-22s${RESET} ${C_VIOLET}%s${RESET}\n" "Weather:" "${icon}${temp_with_unit} (${WEATHER_LOCATION})"
+                printf "${WHITE}%-22s${RESET} %s ${temp_color}%s${RESET} ${C_VIOLET}(%s)${RESET}\n" "Weather:" "${icon}" "${temp_with_unit}" "${WEATHER_LOCATION}"
             fi
         fi
-    else
+    elif [ -z "$WEATHER_LOCATION" ]; then
         # Show hint when WELCOME_LOCATION is not set
         printf "${WHITE}%-22s${RESET} ${C_VIOLET}%s${RESET}\n" "Weather:" "export WELCOME_LOCATION=\"New York,NY\""
     fi
