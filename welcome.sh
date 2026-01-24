@@ -293,8 +293,8 @@ main() {
             # First run: fetch synchronously so weather displays immediately
             fetch_weather_sync
         elif [ $(($(date +%s) - $(stat -c %Y "$WEATHER_CACHE" 2>/dev/null || echo 0))) -gt $WEATHER_CACHE_MAX_AGE ]; then
-            # Cache expired: update in background (non-blocking)
-            update_weather_cache
+            # Cache expired: fetch synchronously so first login shows fresh weather
+            fetch_weather_sync
         fi
     fi
 
