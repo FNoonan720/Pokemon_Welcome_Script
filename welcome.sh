@@ -283,7 +283,13 @@ fetch_weather_sync() {
     [ -z "$WEATHER_LOCATION" ] && return
     local encoded_location="${WEATHER_LOCATION// /+}"
     local weather
-    weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null) && printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
+    weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$weather" ]; then
+        printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
+    else
+        # Fetch failed: write location with fresh timestamp so we don't retry for WEATHER_CACHE_MAX_AGE
+        printf '%s\n' "$WEATHER_LOCATION" > "$WEATHER_CACHE"
+    fi
 }
 
 # Main display
