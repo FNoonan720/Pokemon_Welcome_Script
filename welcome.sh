@@ -287,8 +287,14 @@ fetch_weather_sync() {
     if [ $? -eq 0 ] && [ -n "$weather" ]; then
         printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
     else
-        # Fetch failed: write location with fresh timestamp so we don't retry for WEATHER_CACHE_MAX_AGE
-        printf '%s\n' "$WEATHER_LOCATION" > "$WEATHER_CACHE"
+        # Fetch failed: preserve existing weather data if available, just update timestamp
+        local existing_weather
+        existing_weather=$(sed -n '2p' "$WEATHER_CACHE" 2>/dev/null)
+        if [ -n "$existing_weather" ]; then
+            touch "$WEATHER_CACHE"
+        else
+            printf '%s\n' "$WEATHER_LOCATION" > "$WEATHER_CACHE"
+        fi
     fi
 }
 
