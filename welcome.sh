@@ -303,8 +303,8 @@ main() {
             # Location changed: fetch fresh weather for new location
             fetch_weather_sync
         elif [ $(($(date +%s) - $(stat -c %Y "$WEATHER_CACHE" 2>/dev/null || echo 0))) -gt $WEATHER_CACHE_MAX_AGE ]; then
-            # Cache expired: fetch synchronously so first login shows fresh weather
-            fetch_weather_sync
+            # Cache expired: refresh in background so this login isn't blocked
+            update_weather_cache
         fi
     fi
 
