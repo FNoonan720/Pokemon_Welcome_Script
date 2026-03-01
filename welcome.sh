@@ -286,15 +286,6 @@ fetch_weather_sync() {
     weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$weather" ]; then
         printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
-    else
-        # Fetch failed: preserve existing weather data if available, just update timestamp
-        local existing_weather
-        existing_weather=$(sed -n '2p' "$WEATHER_CACHE" 2>/dev/null)
-        if [ -n "$existing_weather" ]; then
-            touch "$WEATHER_CACHE"
-        else
-            printf '%s\n' "$WEATHER_LOCATION" > "$WEATHER_CACHE"
-        fi
     fi
 }
 
