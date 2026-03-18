@@ -274,7 +274,7 @@ WEATHER_CACHE_MAX_AGE=1800  # 30 minutes in seconds
 update_weather_cache() {
     [ -z "$WEATHER_LOCATION" ] && return
     local encoded_location="${WEATHER_LOCATION// /+}"
-    (weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null) && printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE") &
+    (weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t&u" 2>/dev/null) && printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE") &
     disown
 }
 
@@ -283,7 +283,7 @@ fetch_weather_sync() {
     [ -z "$WEATHER_LOCATION" ] && return
     local encoded_location="${WEATHER_LOCATION// /+}"
     local weather
-    weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t" 2>/dev/null)
+    weather=$(curl -s --max-time 5 "wttr.in/${encoded_location}?format=%c+%t&u" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$weather" ]; then
         printf '%s\n%s\n' "$WEATHER_LOCATION" "$weather" > "$WEATHER_CACHE.tmp" && mv "$WEATHER_CACHE.tmp" "$WEATHER_CACHE"
     fi
