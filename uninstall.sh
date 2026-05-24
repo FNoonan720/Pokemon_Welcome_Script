@@ -27,11 +27,14 @@ uninstall_welcome() {
     cp "$config_file" "${config_file}.backup"
     echo "Backup created: ${config_file}.backup"
 
-    # Remove the welcome message block
-    sed -i "/$MARKER/,/$MARKER END/d" "$config_file"
-
-    # Remove any trailing blank lines at end of file
-    sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$config_file" 2>/dev/null
+    # Remove the welcome message block (macOS sed requires an explicit empty backup extension)
+    if [ "$(uname -s)" = "Darwin" ]; then
+        sed -i '' "/$MARKER/,/$MARKER END/d" "$config_file"
+        sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$config_file" 2>/dev/null
+    else
+        sed -i "/$MARKER/,/$MARKER END/d" "$config_file"
+        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$config_file" 2>/dev/null
+    fi
 
     echo "Welcome message disabled successfully!"
     echo "Config file: $config_file"
