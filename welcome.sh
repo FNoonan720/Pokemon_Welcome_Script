@@ -1,7 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Terminal Welcome Script
 # Displays system information with colorful output and a random Pokemon
+
+# Require bash 4+ when running in bash (zsh is fine)
+if [ -n "$BASH_VERSION" ] && [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    echo "welcome.sh requires bash 4+ or zsh. On macOS, run: brew install bash"
+    return 0 2>/dev/null || exit 0
+fi
 
 # Colors
 RESET='\033[0m'
@@ -20,6 +26,22 @@ C_VIOLET='\033[38;2;200;100;255m'
 # Path to the Pokemon CSV file (format: number,name)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POKEMON_CSV="$SCRIPT_DIR/pokemon.csv"
+
+OS_TYPE="$(uname -s)"
+
+# Cross-platform file modification time (seconds since epoch)
+get_file_mtime() {
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        stat -f %m "$1" 2>/dev/null || echo 0
+    else
+        stat -c %Y "$1" 2>/dev/null || echo 0
+    fi
+}
+
+# Cross-platform random line from a file
+random_line() {
+    awk 'BEGIN{srand()} {lines[NR]=$0} END{print lines[int(rand()*NR)+1]}' "$1"
+}
 
 # ASCII art letter definitions (6 rows each)
 declare -A LETTERS
@@ -207,14 +229,16 @@ LETTERS[Z,5]="╚══════╝"
 
 # Generate banner for a given username
 generate_banner() {
-    local username="${1^^}"  # Convert to uppercase
-    local lines=("" "" "" "" "" "")
+    local username
+    username=$(echo "$1" | tr '[:lower:]' '[:upper:]')
+    local -a lines
+    lines=('' '' '' '' '' '')
 
     for (( i=0; i<${#username}; i++ )); do
         local char="${username:$i:1}"
         if [[ -n "${LETTERS[$char,0]}" ]]; then
             for row in 0 1 2 3 4 5; do
-                lines[$row]+="${LETTERS[$char,$row]}"
+                lines[$((row+1))]+="${LETTERS[$char,$row]}"
             done
         fi
     done
@@ -226,7 +250,7 @@ generate_banner() {
         r=$(( 255 - (255 - 180) * row / 5 ))
         g=$(( 255 - (255 - 230) * row / 5 ))
         b=$(( 255 - (255 - 180) * row / 5 ))
-        echo -e "\033[38;2;${r};${g};${b}m ${lines[$row]}${RESET}"
+        echo -e "\033[38;2;${r};${g};${b}m ${lines[$((row+1))]}${RESET}"
     done
 }
 
@@ -302,7 +326,7 @@ main() {
         elif [ "$cached_location" != "$WEATHER_LOCATION" ]; then
             # Location changed: fetch fresh weather for new location
             fetch_weather_sync
-        elif [ $(($(date +%s) - $(stat -c %Y "$WEATHER_CACHE" 2>/dev/null || echo 0))) -gt $WEATHER_CACHE_MAX_AGE ]; then
+        elif [ $(($(date +%s) - $(get_file_mtime "$WEATHER_CACHE"))) -gt $WEATHER_CACHE_MAX_AGE ]; then
             # Cache expired: refresh in background so this login isn't blocked
             update_weather_cache
         fi
@@ -311,7 +335,7 @@ main() {
     # Get random Pokemon
     local pokemon
     if [ -f "$POKEMON_CSV" ]; then
-        pokemon=$(shuf -n1 "$POKEMON_CSV" | cut -d',' -f2)
+        pokemon=$(random_line "$POKEMON_CSV" | cut -d',' -f2)
     else
         pokemon="pikachu"
     fi
@@ -324,7 +348,14 @@ main() {
     [ $is_shiny -eq 1 ] && variant="shiny"
 
     # Start Pokemon sprite fetch in background
+    # In interactive shells, temporarily disable monitor mode so the shell doesn't
+    # print "[N] done" when the job completes (monitor can't be toggled in non-interactive shells)
     local sprite_file="/tmp/pokemon_sprite_$$.png"
+    local _restore_monitor=0
+    if [[ -o interactive ]] && [[ -o monitor ]]; then
+        _restore_monitor=1
+        set +m
+    fi
     curl -sf "https://img.pokemondb.net/sprites/home/${variant}/${pokemon}.png" -o "$sprite_file" 2>/dev/null &
     local sprite_pid=$!
 
@@ -334,14 +365,15 @@ main() {
     generate_banner "$(whoami)"
 
     # Wait for sprite and display
-    wait $sprite_pid
+    wait $sprite_pid 2>/dev/null
+    [ "$_restore_monitor" = "1" ] && set -m
     if [ -f "$sprite_file" ] && command -v chafa &> /dev/null; then
         chafa --size=20x10 --symbols=block "$sprite_file" 2>/dev/null | sed 's/^/                     /'
         rm -f "$sprite_file"
 
         # Pokemon name with title case
         local pokemon_display="${pokemon//-/ }"
-        pokemon_display=$(echo "$pokemon_display" | sed 's/\b\(.\)/\u\1/g')
+        pokemon_display=$(echo "$pokemon_display" | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2); print}')
         [ $is_shiny -eq 1 ] && pokemon_display="$pokemon_display ✨"
 
         local name_len=${#pokemon_display}
@@ -354,18 +386,35 @@ main() {
     # System info (fast local operations)
     printf "${WHITE}%-22s${RESET} ${C_ORANGE}%s${RESET}\n" "Today is:" "$(date '+%a, %b %d %Y %I:%M %p %Z')"
 
-    if [ -f /etc/os-release ]; then
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        printf "${WHITE}%-22s${RESET} ${C_YELLOW}%s${RESET}\n" "Operating System:" "$(sw_vers -productName) $(sw_vers -productVersion)"
+    elif [ -f /etc/os-release ]; then
         . /etc/os-release
         printf "${WHITE}%-22s${RESET} ${C_YELLOW}%s${RESET}\n" "Operating System:" "$NAME $VERSION"
     fi
 
-    printf "${WHITE}%-22s${RESET} ${C_GREEN}%s${RESET}\n" "Processor:" "$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //')"
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        printf "${WHITE}%-22s${RESET} ${C_GREEN}%s${RESET}\n" "Processor:" "$(sysctl -n machdep.cpu.brand_string)"
+    else
+        printf "${WHITE}%-22s${RESET} ${C_GREEN}%s${RESET}\n" "Processor:" "$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //')"
+    fi
 
     printf "${WHITE}%-22s${RESET} ${C_CYAN}%s${RESET}\n" "Kernel Information:" "$(uname -r)"
 
     # Memory info
-    read -r _ total used _ _ _ available _ <<< "$(free -m | grep '^Mem:')"
-    local percent=$((used * 100 / total))
+    local total used available percent
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        total=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
+        local page_size pages_active pages_wired
+        page_size=$(vm_stat | awk '/page size/ {print $8}')
+        pages_active=$(vm_stat | awk '/Pages active/ {gsub(/\./, "", $3); print $3}')
+        pages_wired=$(vm_stat | awk '/Pages wired down/ {gsub(/\./, "", $4); print $4}')
+        used=$(( (pages_active + pages_wired) * page_size / 1024 / 1024 ))
+        available=$(( total - used ))
+    else
+        read -r _ total used _ _ _ available _ <<< "$(free -m | grep '^Mem:')"
+    fi
+    percent=$((used * 100 / total))
     printf "${WHITE}%-22s${RESET} ${C_BLUE}Used %s MB of %s MB (%s%%)${RESET}\n" "Memory Usage:" "$used" "$total" "$percent"
     printf "${WHITE}%-22s${RESET} ${C_BLUE}%s MB available${RESET}\n" "" "$available"
 
