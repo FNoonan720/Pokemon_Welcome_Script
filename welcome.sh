@@ -24,7 +24,7 @@ C_BLUE='\033[38;2;100;150;255m'
 C_VIOLET='\033[38;2;200;100;255m'
 
 # Path to the Pokemon CSV file (format: number,name)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 POKEMON_CSV="$SCRIPT_DIR/pokemon.csv"
 
 OS_TYPE="$(uname -s)"
